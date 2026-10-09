@@ -1,0 +1,1757 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2870
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww29200\viewh15940\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 <!DOCTYPE html>\
+<html lang="ms">\
+<head>\
+  <meta charset="UTF-8">\
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">\
+  <title>PAC O&G Sistem Triaj Pantas & Pemantauan Masa Menunggu</title>\
+  <script src="https://cdn.tailwindcss.com"></script>\
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">\
+  \
+  <!-- Firebase Modular Scripts for Real-Time Multi-Device Sync -->\
+  <script type="module">\
+    import \{ initializeApp \} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";\
+    import \{ getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged \} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";\
+    import \{ getFirestore, doc, setDoc, deleteDoc, updateDoc, collection, onSnapshot \} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";\
+\
+    // Global Firebase setup with environment detection & offline fallback\
+    const defaultAppId = 'pac-og-triage-system';\
+    const appId = typeof __app_id !== 'undefined' ? __app_id : defaultAppId;\
+    \
+    let db = null;\
+    let auth = null;\
+    let currentUser = null;\
+    let isCloudReady = false;\
+\
+    // Default configuration placeholder or environment provided\
+    const rawConfig = typeof __firebase_config !== 'undefined' ? __firebase_config : null;\
+    \
+    if (rawConfig) \{\
+      try \{\
+        const firebaseConfig = JSON.parse(rawConfig);\
+        const app = initializeApp(firebaseConfig);\
+        db = getFirestore(app);\
+        auth = getAuth(app);\
+\
+        // Authenticate first before queries (Rule 3)\
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) \{\
+          await signInWithCustomToken(auth, __initial_auth_token);\
+        \} else \{\
+          await signInAnonymously(auth);\
+        \}\
+\
+        onAuthStateChanged(auth, (user) => \{\
+          if (user) \{\
+            currentUser = user;\
+            isCloudReady = true;\
+            window.syncStatusUpdate(true, 'Awan Aktif (Tersambung)');\
+            initCloudListeners();\
+          \} else \{\
+            window.syncStatusUpdate(false, 'Luar Talian (Storan Lokal)');\
+          \}\
+        \});\
+      \} catch (err) \{\
+        console.warn("Firebase initialization skipped, defaulting to Local Mode:", err);\
+        window.syncStatusUpdate(false, 'Mod Standalone / Lokal');\
+      \}\
+    \} else \{\
+      window.syncStatusUpdate(false, 'Mod Standalone / Lokal');\
+    \}\
+\
+    // Set up Real-Time Listeners\
+    function initCloudListeners() \{\
+      if (!db || !currentUser) return;\
+\
+      const publicPatientsCol = collection(db, 'artifacts', appId, 'public', 'data', 'pac_patients');\
+      \
+      onSnapshot(publicPatientsCol, (snapshot) => \{\
+        const loadedList = [];\
+        const loadedArchive = [];\
+\
+        snapshot.forEach((docSnap) => \{\
+          const data = docSnap.data();\
+          data.id = docSnap.id;\
+          if (data.isAssessed) \{\
+            loadedArchive.push(data);\
+          \} else \{\
+            loadedList.push(data);\
+          \}\
+        \});\
+\
+        // Pass to window handler\
+        window.handleCloudSyncUpdate(loadedList, loadedArchive);\
+      \}, (error) => \{\
+        console.error("Firestore sync error:", error);\
+        window.syncStatusUpdate(false, 'Ralat Sambungan Awan');\
+      \});\
+    \}\
+\
+    // Exposed Cloud Methods\
+    window.cloudSavePatient = async (patient) => \{\
+      if (!isCloudReady || !db || !currentUser) \{\
+        return false;\
+      \}\
+      try \{\
+        const patientRef = doc(db, 'artifacts', appId, 'public', 'data', 'pac_patients', patient.id);\
+        await setDoc(patientRef, patient);\
+        return true;\
+      \} catch (e) \{\
+        console.error("Error saving patient to cloud:", e);\
+        return false;\
+      \}\
+    \};\
+\
+    window.cloudUpdatePatient = async (patientId, updates) => \{\
+      if (!isCloudReady || !db || !currentUser) return false;\
+      try \{\
+        const patientRef = doc(db, 'artifacts', appId, 'public', 'data', 'pac_patients', patientId);\
+        await updateDoc(patientRef, updates);\
+        return true;\
+      \} catch (e) \{\
+        console.error("Error updating patient in cloud:", e);\
+        return false;\
+      \}\
+    \};\
+\
+    window.cloudDeletePatient = async (patientId) => \{\
+      if (!isCloudReady || !db || !currentUser) return false;\
+      try \{\
+        const patientRef = doc(db, 'artifacts', appId, 'public', 'data', 'pac_patients', patientId);\
+        await deleteDoc(patientRef);\
+        return true;\
+      \} catch (e) \{\
+        console.error("Error deleting patient in cloud:", e);\
+        return false;\
+      \}\
+    \};\
+  </script>\
+\
+  <script>\
+    tailwind.config = \{\
+      darkMode: 'class',\
+      theme: \{\
+        extend: \{\
+          colors: \{\
+            pacRed: \{ 50: '#fef2f2', 100: '#fee2e2', 500: '#ef4444', 600: '#dc2626', 700: '#b91c1c', 900: '#7f1d1d' \},\
+            pacYellow: \{ 50: '#fffbeb', 100: '#fef3c7', 500: '#f59e0b', 600: '#d97706', 700: '#b45309', 900: '#78350f' \},\
+            pacGreen: \{ 50: '#f0fdf4', 100: '#dcfce7', 500: '#22c55e', 600: '#16a34a', 700: '#15803d', 900: '#14532d' \},\
+            hospital: \{ 50: '#f0f9ff', 100: '#e0f2fe', 600: '#0284c7', 700: '#0369a1', 800: '#075985', 900: '#0c4a6e' \}\
+          \},\
+          animation: \{\
+            'urgent-pulse': 'urgentPulse 1.2s infinite',\
+            'subtle-bounce': 'subtleBounce 2s infinite'\
+          \},\
+          keyframes: \{\
+            urgentPulse: \{\
+              '0%, 100%': \{ backgroundColor: '#fee2e2', borderColor: '#ef4444', color: '#991b1b' \},\
+              '50%': \{ backgroundColor: '#dc2626', borderColor: '#b91c1c', color: '#ffffff' \}\
+            \},\
+            subtleBounce: \{\
+              '0%, 100%': \{ transform: 'translateY(0)' \},\
+              '50%': \{ transform: 'translateY(-2px)' \}\
+            \}\
+          \}\
+        \}\
+      \}\
+    \}\
+  </script>\
+  <style>\
+    @media print \{\
+      .no-print \{ display: none !important; \}\
+      .print-only \{ display: block !important; \}\
+      body \{ background: white !important; font-size: 11pt; \}\
+    \}\
+    .print-only \{ display: none; \}\
+    .custom-scrollbar::-webkit-scrollbar \{ width: 6px; height: 6px; \}\
+    .custom-scrollbar::-webkit-scrollbar-track \{ background: #f1f5f9; border-radius: 4px; \}\
+    .custom-scrollbar::-webkit-scrollbar-thumb \{ background: #cbd5e1; border-radius: 4px; \}\
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover \{ background: #94a3b8; \}\
+\
+    /* TV Monitor Fullscreen Styles */\
+    body.mode-tv \{\
+      background-color: #0b132b !important;\
+      color: #f8fafc !important;\
+    \}\
+    body.mode-tv .tv-hidden \{\
+      display: none !important;\
+    \}\
+    body.mode-tv .tv-card \{\
+      background-color: #1c2541 !important;\
+      border-color: #3a506b !important;\
+      color: #ffffff !important;\
+    \}\
+    body.mode-tv .tv-text-lg \{\
+      font-size: 1.25rem !important;\
+    \}\
+  </style>\
+</head>\
+<body id="mainBody" class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen pb-20">\
+\
+  <!-- Top App Navigation & Mode Switcher Bar -->\
+  <header class="bg-hospital-900 text-white border-b border-hospital-800 sticky top-0 z-30 shadow-md no-print">\
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex flex-wrap justify-between items-center gap-3">\
+      \
+      <!-- Brand & Hospital Title -->\
+      <div class="flex items-center space-x-3">\
+        <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center font-bold text-lg text-sky-300 border border-white/20">\
+          <i class="fa-solid fa-hospital-user"></i>\
+        </div>\
+        <div>\
+          <h1 class="text-sm sm:text-base font-extrabold tracking-tight flex items-center gap-2">\
+            PAC O&G Triage System\
+            <span id="cloudStatusBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">\
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>\
+              <span id="cloudStatusText">Masa Nyata (Live)</span>\
+            </span>\
+          </h1>\
+          <p class="text-[11px] text-sky-200/80">Patient Admission Centre \'95 Jabatan O&G</p>\
+        </div>\
+      </div>\
+\
+      <!-- Device View Mode Switcher -->\
+      <div class="flex items-center bg-hospital-800/80 p-1 rounded-xl border border-sky-600/40 text-xs">\
+        <button id="viewBtnPC" onclick="setViewMode('PC')" class="px-2.5 py-1 rounded-lg font-bold bg-white text-hospital-900 shadow-xs flex items-center gap-1.5 transition">\
+          <i class="fa-solid fa-desktop"></i> <span class="hidden sm:inline">PC Kaunter</span>\
+        </button>\
+        <button id="viewBtnTV" onclick="setViewMode('TV')" class="px-2.5 py-1 rounded-lg font-semibold text-sky-200 hover:text-white flex items-center gap-1.5 transition">\
+          <i class="fa-solid fa-tv"></i> <span class="hidden sm:inline">Skrin TV PAC</span>\
+        </button>\
+        <button id="viewBtnMobile" onclick="setViewMode('MOBILE')" class="px-2.5 py-1 rounded-lg font-semibold text-sky-200 hover:text-white flex items-center gap-1.5 transition">\
+          <i class="fa-solid fa-mobile-screen"></i> <span class="hidden sm:inline">Telefon MO / Pakar</span>\
+        </button>\
+      </div>\
+\
+      <!-- Audio Alarm, Counts & Live Clock -->\
+      <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">\
+        <button onclick="toggleAudioAlarm()" id="audioToggleBtn" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-xl transition">\
+          <i id="audioIcon" class="fa-solid fa-volume-xmark text-slate-400"></i>\
+          <span id="audioText" class="hidden md:inline">Alarm: OFF</span>\
+        </button>\
+\
+        <button onclick="openDeployGuideModal()" class="flex items-center gap-1.5 bg-sky-700 hover:bg-sky-600 border border-sky-500 text-white px-2.5 py-1.5 rounded-xl shadow-xs transition">\
+          <i class="fa-solid fa-qrcode"></i>\
+          <span>Sambung Telefon / TV</span>\
+        </button>\
+\
+        <div class="hidden xl:block text-slate-300 pl-2 border-l border-white/10 text-right">\
+          <div id="liveClock" class="font-mono text-xs text-sky-200"></div>\
+        </div>\
+      </div>\
+    </div>\
+  </header>\
+\
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 mt-4 space-y-4">\
+    \
+    <!-- DASHBOARD STATISTIK & PRESTASI PAC -->\
+    <section id="dashboardSection" class="bg-white p-4 sm:p-5 rounded-2xl border-2 border-sky-100 shadow-md no-print space-y-3">\
+      <div class="flex flex-wrap items-center justify-between border-b border-slate-100 pb-2.5 gap-2">\
+        <div class="flex items-center space-x-3">\
+          <span class="bg-sky-600 text-white p-2 rounded-xl text-base shadow-sm"><i class="fa-solid fa-chart-pie"></i></span>\
+          <div>\
+            <div class="flex items-center gap-2">\
+              <h2 class="font-black text-slate-900 text-sm sm:text-base">Dashboard Prestasi Triaj & Pemantauan Masa Menunggu PAC O&G</h2>\
+              <span class="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-300">LIVE SYNC</span>\
+            </div>\
+            <p class="text-xs text-slate-500 font-medium">Data diselaraskan secara automatik merentas TV PAC, PC kaunter dan telefon pegawai perubatan.</p>\
+          </div>\
+        </div>\
+\
+        <div class="flex items-center gap-2">\
+          <button onclick="toggleCompletedArchiveModal()" class="px-3 py-1.5 text-xs font-bold rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition flex items-center gap-1.5 shadow-xs">\
+            <i class="fa-solid fa-clipboard-check text-emerald-600 text-sm"></i> Arkib Selesai (<span id="archiveCountBadge" class="font-black">0</span>)\
+          </button>\
+        </div>\
+      </div>\
+\
+      <!-- KPI Summary Cards -->\
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 text-xs">\
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-2xs">\
+          <div class="flex items-center justify-between text-slate-500 mb-1">\
+            <span class="text-[10px] font-bold uppercase tracking-wider">Jumlah Berdaftar</span>\
+            <i class="fa-solid fa-hospital-user text-slate-400"></i>\
+          </div>\
+          <div id="dashTotalRegistered" class="text-2xl font-black text-slate-900">0</div>\
+          <span class="text-[10px] text-slate-500 font-medium">Keseluruhan pendaftaran</span>\
+        </div>\
+\
+        <div class="bg-amber-50 p-3 rounded-xl border border-amber-200 shadow-2xs">\
+          <div class="flex items-center justify-between text-amber-800 mb-1">\
+            <span class="text-[10px] font-black uppercase tracking-wider">Sedang Menunggu</span>\
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>\
+          </div>\
+          <div id="dashActiveWaiting" class="text-2xl font-black text-amber-700">0</div>\
+          <span class="text-[10px] text-amber-900 font-bold block truncate" id="dashWaitingBreakdown">0A \'95 0B \'95 0C</span>\
+        </div>\
+\
+        <div class="bg-blue-50 p-3 rounded-xl border border-blue-200 shadow-2xs">\
+          <div class="flex items-center justify-between text-blue-800 mb-1">\
+            <span class="text-[10px] font-black uppercase tracking-wider">Sedang Diperiksa MO</span>\
+            <i class="fa-solid fa-user-doctor text-blue-600"></i>\
+          </div>\
+          <div id="dashInConsultation" class="text-2xl font-black text-blue-700">0</div>\
+          <span class="text-[10px] text-blue-700 font-semibold">Dalam bilik rawatan</span>\
+        </div>\
+\
+        <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-2xs">\
+          <div class="flex items-center justify-between text-emerald-800 mb-1">\
+            <span class="text-[10px] font-black uppercase tracking-wider">Selesai Penilaian</span>\
+            <i class="fa-solid fa-check-double text-emerald-600"></i>\
+          </div>\
+          <div id="dashTotalAssessed" class="text-2xl font-black text-emerald-700">0</div>\
+          <span class="text-[10px] text-emerald-700 font-semibold">Telah keluar giliran</span>\
+        </div>\
+\
+        <div class="col-span-2 lg:col-span-1 bg-rose-50 p-3 rounded-xl border border-rose-200 shadow-2xs">\
+          <div class="flex items-center justify-between text-rose-800 mb-1">\
+            <span class="text-[10px] font-black uppercase tracking-wider">Melebihi Had Masa</span>\
+            <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>\
+          </div>\
+          <div id="dashTotalBreached" class="text-2xl font-black text-rose-700">0</div>\
+          <span class="text-[10px] text-rose-700 font-bold" id="dashComplianceRate">Capai Sasaran: 100%</span>\
+        </div>\
+      </div>\
+    </section>\
+\
+    <!-- Overdue Unassessed Patient Warning Banner -->\
+    <div id="slaBreachBanner" class="hidden rounded-2xl p-3.5 bg-rose-600 text-white border-2 border-rose-700 shadow-md no-print flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-urgent-pulse">\
+      <div class="flex items-center space-x-3">\
+        <div class="w-9 h-9 rounded-full bg-white text-rose-600 flex items-center justify-center text-lg font-black shrink-0">\
+          <i class="fa-solid fa-triangle-exclamation"></i>\
+        </div>\
+        <div>\
+          <h3 id="slaBreachTitle" class="font-black text-xs sm:text-sm uppercase tracking-wide">\uc0\u55357 \u57000  AMARAN: PESAKIT MELEBIHI HAD MASA MENUNGGU!</h3>\
+          <p id="slaBreachText" class="text-xs font-semibold opacity-95">Sila buat penilaian MO dengan segera.</p>\
+        </div>\
+      </div>\
+      <button onclick="scrollToOverdue()" class="px-3 py-1.5 rounded-xl bg-white text-rose-900 hover:bg-rose-100 text-xs font-black shadow-xs flex items-center gap-1.5 self-end sm:self-auto shrink-0">\
+        <i class="fa-solid fa-eye"></i> Lihat Pesakit Tertunggak\
+      </button>\
+    </div>\
+\
+    <!-- Notification Toast / Alert -->\
+    <div id="alertBanner" class="hidden rounded-xl p-3 flex items-start space-x-3 shadow-xs no-print">\
+      <div id="alertIcon" class="text-base mt-0.5"></div>\
+      <div class="flex-1">\
+        <h4 id="alertTitle" class="text-xs font-bold">System Alert</h4>\
+        <p id="alertMessage" class="text-xs mt-0.5 opacity-90"></p>\
+      </div>\
+      <button onclick="hideAlert()" class="text-slate-400 hover:text-slate-600 text-sm">\
+        <i class="fa-solid fa-xmark"></i>\
+      </button>\
+    </div>\
+\
+    <!-- FAST-TRACK REGISTRATION FORM (Hidden in TV Mode for clean wallboard display) -->\
+    <div id="triageRegistrationCard" class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm no-print space-y-4 tv-hidden">\
+      <div class="flex flex-wrap items-center justify-between border-b border-slate-100 pb-3 gap-2">\
+        <div class="flex items-center space-x-2">\
+          <span class="bg-hospital-100 text-hospital-700 p-1.5 rounded-lg text-sm"><i class="fa-solid fa-file-pen"></i></span>\
+          <div>\
+            <h2 class="font-bold text-slate-800 text-sm sm:text-base">Daftar Triaj Pantas Pesakit (Kaunter Triage)</h2>\
+            <p class="text-[11px] text-slate-500">Pendaftaran pesakit baru. Sebaik sahaja didaftarkan, ia akan diselaraskan terus ke TV PAC dan telefon MO.</p>\
+          </div>\
+        </div>\
+\
+        <div class="flex items-center gap-2">\
+          <button type="button" onclick="loadQuickDemo('eclampsia')" class="px-2 py-1 text-[11px] font-bold rounded-lg bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 transition">\
+            <i class="fa-solid fa-bolt"></i> Demo A\
+          </button>\
+          <button type="button" onclick="loadQuickDemo('pprom')" class="px-2 py-1 text-[11px] font-bold rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition">\
+            <i class="fa-solid fa-baby"></i> Demo B\
+          </button>\
+          <button type="button" onclick="loadQuickDemo('elective')" class="px-2 py-1 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition">\
+            <i class="fa-solid fa-calendar-check"></i> Demo C\
+          </button>\
+          <button type="button" onclick="resetForm()" class="px-2 py-1 text-[11px] font-semibold rounded-lg text-slate-500 hover:bg-slate-100 border border-slate-200">\
+            <i class="fa-solid fa-rotate-left"></i> Reset\
+          </button>\
+        </div>\
+      </div>\
+\
+      <form id="triageForm" onsubmit="handleFastTriageSubmit(event)" class="space-y-4">\
+        \
+        <!-- Row 1: Demographics + Direct Free-flow GA -->\
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">\
+          <div>\
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Pesakit *</label>\
+            <input type="text" id="ptName" required placeholder="Nama penuh pesakit" class="w-full text-xs rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-hospital-600 focus:outline-none">\
+          </div>\
+\
+          <div>\
+            <label class="block text-xs font-semibold text-slate-700 mb-1">No. Kad Pengenalan / Pasport *</label>\
+            <input type="text" id="ptIC" required placeholder="Contoh: 940512-10-5432" class="w-full text-xs rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-hospital-600 focus:outline-none">\
+          </div>\
+\
+          <div>\
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Umur (Tahun) *</label>\
+            <input type="number" id="ptAge" required placeholder="28" min="10" max="65" class="w-full text-xs rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-hospital-600 focus:outline-none">\
+          </div>\
+\
+          <!-- FREE-FLOW GESTATIONAL AGE FIELD -->\
+          <div class="bg-sky-50/50 p-2 rounded-xl border border-sky-200">\
+            <label class="block text-xs font-black text-hospital-800 mb-1">\
+              Usia Kandungan (GA) *\
+            </label>\
+            \
+            <input type="text" id="ptGA" required placeholder="Taip terus: 34 minggu / 32+4 / Term / Gynae" class="w-full text-xs font-bold rounded-lg border border-sky-300 p-2 bg-white text-hospital-900 focus:ring-2 focus:ring-hospital-600 focus:outline-none shadow-xs">\
+            \
+            <!-- Quick Chips -->\
+            <div class="flex flex-wrap gap-1 mt-1.5">\
+              <button type="button" onclick="setQuickGA('Term (37 - 40w)')" class="text-[9px] bg-white border border-sky-200 hover:bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded font-semibold">Term</button>\
+              <button type="button" onclick="setQuickGA('Preterm (< 34w)')" class="text-[9px] bg-red-100 border border-red-200 hover:bg-red-200 text-red-800 px-1.5 py-0.5 rounded font-semibold">&lt; 34w</button>\
+              <button type="button" onclick="setQuickGA('Late Preterm (34-36w)')" class="text-[9px] bg-amber-100 border border-amber-200 hover:bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded font-semibold">34-36w</button>\
+              <button type="button" onclick="setQuickGA('Post-dates (> 40w)')" class="text-[9px] bg-white border border-sky-200 hover:bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded font-semibold">&gt; 40w</button>\
+              <button type="button" onclick="setQuickGA('Bukan Hamil / Gynae')" class="text-[9px] bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-semibold">Gynae</button>\
+            </div>\
+          </div>\
+        </div>\
+\
+        <!-- Row 2: Waktu Tiba & Aduan Utama -->\
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">\
+          <div>\
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Waktu Tiba di PAC *</label>\
+            <input type="datetime-local" id="ptArrivalTime" required class="w-full text-xs rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-hospital-600 focus:outline-none">\
+          </div>\
+\
+          <div class="sm:col-span-2">\
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Aduan Utama / Presenting Complaints *</label>\
+            <input type="text" id="ptComplaints" required placeholder="Contoh: Sakit perut hendak bersalin, keluar air ketuban sejak 2 jam lalu, pening kepala..." class="w-full text-xs rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-hospital-600 focus:outline-none">\
+          </div>\
+        </div>\
+\
+        <!-- Row 3: Intuitive Clinical Symptom Boxes -->\
+        <div class="space-y-2.5 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200">\
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5">\
+            <div>\
+              <label class="block text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">\
+                <i class="fa-solid fa-stethoscope text-hospital-600"></i> Pilih Masalah / Aduan Pesakit (Auto-Kira Kod Warna):\
+              </label>\
+              <p class="text-[11px] text-slate-500 font-medium">Staf hanya perlu tandakan simptom pesakit. Sistem akan tentukan Kod Merah, Kuning, atau Hijau secara automatik.</p>\
+            </div>\
+\
+            <!-- Instant Symptom Filter Input -->\
+            <div class="relative w-full sm:w-64">\
+              <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>\
+              <input type="text" id="symptomSearchInput" oninput="filterSymptoms()" placeholder="Cari simptom: cth. ketuban, pendarahan, bp..." class="w-full text-xs pl-7 pr-2.5 py-1.5 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-hospital-600">\
+            </div>\
+          </div>\
+\
+          <!-- 6 Intuitive Clinical Group Boxes -->\
+          <div id="clinicalCategoriesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">\
+            \
+            <!-- Box 1: Tekanan Darah & Sawan -->\
+            <div class="symptom-box bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">\
+              <div class="font-bold text-slate-800 text-[11px] flex items-center gap-1.5 border-b border-slate-100 pb-1 text-hospital-700">\
+                <i class="fa-solid fa-heart-pulse"></i> 1. Tekanan Darah & Sawan (BP)\
+              </div>\
+              <div class="space-y-1">\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="BP \uc0\u8805  160/100 mmHg" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">BP \uc0\u8805  160/100 mmHg</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="High BP with Proteinuria \uc0\u8805  2+" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">High BP + Proteinuria \uc0\u8805  2+</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="Symptoms of IE (Imminent Eclampsia)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Gejala Imminent Eclampsia (Sakit kepala kuat, kabur mata, pedih ulu hati)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="Eclampsia (Sawan Mengandung)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Eclampsia (Sawan Mengandung)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="B" value="BP 140-159/90-99 (Tanpa Proteinuria/IE)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">BP 140-159 / 90-99 mmHg (Tanpa Proteinuria & Tanpa Gejala IE)</span>\
+                </label>\
+              </div>\
+            </div>\
+\
+            <!-- Box 2: Pendarahan (Bleeding / APH) -->\
+            <div class="symptom-box bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">\
+              <div class="font-bold text-slate-800 text-[11px] flex items-center gap-1.5 border-b border-slate-100 pb-1 text-hospital-700">\
+                <i class="fa-solid fa-droplet"></i> 2. Pendarahan (Bleeding)\
+              </div>\
+              <div class="space-y-1">\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="Antepartum Haemorrhage (APH)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Antepartum Haemorrhage (APH)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="Pendarahan Awal Hamil + Tidak Stabil (HR>110/MAP<65/Aktif)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Pendarahan awal hamil + Tak Stabil (HR > 110 / Pendarahan aktif terus menerus)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="B" value="Pendarahan Awal Hamil (Stabil)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Pendarahan awal hamil (Hemodinamik Stabil)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="B" value="Heavy Menstrual Bleeding (Hb < 7.0 g/dL)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Tumpah darah haid teruk (Hb &lt; 7.0 g/dL)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="PUL / Suspected Ectopic Pregnancy" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">PUL / Disyaki Ectopic Pregnancy</span>\
+                </label>\
+              </div>\
+            </div>\
+\
+            <!-- Box 3: Sakit Bersalin & Ketuban -->\
+            <div class="symptom-box bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">\
+              <div class="font-bold text-slate-800 text-[11px] flex items-center gap-1.5 border-b border-slate-100 pb-1 text-hospital-700">\
+                <i class="fa-solid fa-person-pregnant"></i> 3. Bersalin & Air Ketuban\
+              </div>\
+              <div class="space-y-1">\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="Preterm labour < 34 weeks" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Sakit bersalin pramatang &lt; 34 minggu</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="Cord Prolapse (Tali pusat terkeluar)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Cord Prolapse (Tali pusat terkeluar)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="Bersalin Luar Hospital / Retained Placenta" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Bersalin luar hospital / Retained Placenta</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="B" value="Pecah Air Ketuban (PROM / PPROM)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Air ketuban pecah / keluar (PROM / PPROM)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="B" value="Sakit Hendak Bersalin (Patient in Labour)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Sakit hendak bersalin (In Labour)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="B" value="Preterm labour \uc0\u8805  34 weeks" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Sakit bersalin pramatang \uc0\u8805  34 minggu</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="B" value="Non-cephalic presentation in labour" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Kedudukan songsang/melintang dalam labour</span>\
+                </label>\
+              </div>\
+            </div>\
+\
+            <!-- Box 4: Pergerakan Bayi & Keadaan Janin -->\
+            <div class="symptom-box bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">\
+              <div class="font-bold text-slate-800 text-[11px] flex items-center gap-1.5 border-b border-slate-100 pb-1 text-hospital-700">\
+                <i class="fa-solid fa-baby"></i> 4. Pergerakan Bayi & CTG\
+              </div>\
+              <div class="space-y-1">\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="CTG Abnormal / Pathological / Meconium liquor" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Rujukan CTG Abnormal / Pathological / Meconium</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="B" value="Pergerakan Bayi Berkurang (Reduced FM)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Gerak bayi berkurang (Reduced Foetal Movement)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="B" value="Rujukan KKIA untuk Foetal Assessment" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Rujukan KKIA untuk Foetal Assessment</span>\
+                </label>\
+              </div>\
+            </div>\
+\
+            <!-- Box 5: Demam, Sepsis & Kesihatan Ibu -->\
+            <div class="symptom-box bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">\
+              <div class="font-bold text-slate-800 text-[11px] flex items-center gap-1.5 border-b border-slate-100 pb-1 text-hospital-700">\
+                <i class="fa-solid fa-temperature-arrow-up"></i> 5. Demam, Sepsis & Ibu Sakit\
+              </div>\
+              <div class="space-y-1">\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="Demam dengan tanda Sepsis (Lesu / Dehidrasi / Tachycardia)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Demam berserta tanda sepsis (lesu, dehidrasi, nadi laju)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="Penyakit Jantung Bergejala (Sesak Nafas / RR > 22)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Penyakit jantung bergejala (Sesak nafas / SOB / RR > 22)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="DM Tidak Terkawal (Ketone \uc0\u8805  2+ / DXT > 11)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">DM tidak terkawal (Ketone \uc0\u8805  2+ atau DXT > 11.0 mmol/L)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="Maternal Tachycardia (HR > 110 bpm)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Nadi ibu sangat laju (HR > 110 bpm)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="A" value="Suspected Ovarian Torsion" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Disyaki Ovarian Torsion (Sakit pelvis mendadak)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="B" value="Demam biasa (Tanpa tanda sepsis)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Demam biasa (Tiada tanda sepsis)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="B" value="Muntah teruk awal kehamilan (N&V / HG)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Muntah teruk awal hamil (Nausea & Vomiting)</span>\
+                </label>\
+              </div>\
+            </div>\
+\
+            <!-- Box 6: Kemasukan Elektif, Prosedur & Temujanji Rutin -->\
+            <div class="symptom-box bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">\
+              <div class="font-bold text-slate-800 text-[11px] flex items-center gap-1.5 border-b border-slate-100 pb-1 text-hospital-700">\
+                <i class="fa-solid fa-clipboard-list"></i> 6. Elektif, Prosedur & Rutin\
+              </div>\
+              <div class="space-y-1">\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="C" value="Kemasukan Elektif untuk IOL" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Kemasukan elektif IOL **</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="C" value="Pembedahan Elektif (LSCS / Gynae)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Pembedahan elektif (LSCS / Gynae) **</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="C" value="Prosedur ECV" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Prosedur ECV **</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="C" value="Kemasukan atas Masalah Logistik" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Kemasukan masalah logistik (Jarak jauh / tiada transport)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="C" value="Pesakit GOC (Transfusi Darah / Chemo / CT Scan)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Pesakit GOC (Transfusi darah / Kimoterapi / CT)</span>\
+                </label>\
+                <label class="symptom-item flex items-start gap-2 p-1 rounded hover:bg-slate-50 cursor-pointer">\
+                  <input type="checkbox" name="symptomCheck" data-group="C" value="Rujukan untuk Optimasi BSP (Kencing Manis)" onchange="runAutoTriageClassification()" class="mt-0.5 rounded text-hospital-600">\
+                  <span class="text-slate-700 leading-snug">Rujukan untuk optimasi profil BSP (GDM)</span>\
+                </label>\
+              </div>\
+            </div>\
+\
+          </div>\
+        </div>\
+\
+        <!-- Live Triage Output Action Bar -->\
+        <div id="triageActionBar" class="p-3.5 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 border-slate-200">\
+          <div class="flex items-center gap-3">\
+            <span id="decisionBadge" class="text-xs sm:text-sm font-black px-3 py-1.5 rounded-full uppercase bg-slate-200 text-slate-600 border border-slate-300 shadow-xs">\
+              Belum Ditriaj\
+            </span>\
+            <div>\
+              <div id="decisionTitle" class="text-xs sm:text-sm font-black text-slate-800 uppercase">SILA LENGKAPKAN MAKLUMAT</div>\
+              <p id="decisionSLA" class="text-xs text-slate-500 font-semibold mt-0.5">Sasaran Tindakan MO: N/A</p>\
+            </div>\
+          </div>\
+\
+          <div class="flex items-center gap-2 w-full sm:w-auto">\
+            <button type="submit" class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-hospital-700 hover:bg-hospital-800 text-white font-extrabold text-xs shadow-md transition flex items-center justify-center gap-2">\
+              <i class="fa-solid fa-user-plus"></i> Sahkan & Masukkan Dalam Giliran\
+            </button>\
+          </div>\
+        </div>\
+\
+      </form>\
+    </div>\
+\
+    <!-- ACTIVE QUEUE LISTS PER GROUP -->\
+    <div class="space-y-4">\
+      \
+      <!-- Queue Header Controls & Mobile Filters -->\
+      <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 no-print tv-card">\
+        <div class="flex items-center space-x-2">\
+          <i class="fa-solid fa-stopwatch text-hospital-600 text-base"></i>\
+          <div>\
+            <h3 class="text-sm font-black text-slate-800">Senarai Giliran Pesakit PAC (Ikut Waktu Ketibaan)</h3>\
+            <p class="text-[11px] text-slate-500">Masa menunggu dikira secara berdetik dari waktu tiba sehingga pesakit mula diperiksa oleh MO.</p>\
+          </div>\
+        </div>\
+\
+        <div class="flex flex-wrap items-center gap-2 text-xs">\
+          <!-- Mobile Specific Group Quick Filters -->\
+          <div class="flex items-center bg-slate-100 p-1 rounded-xl">\
+            <button onclick="setFilterCategory('ALL')" id="fltAll" class="px-2 py-1 rounded-lg bg-white font-bold text-slate-800 shadow-xs">Semua</button>\
+            <button onclick="setFilterCategory('A')" id="fltA" class="px-2 py-1 rounded-lg text-red-600 font-bold hover:bg-white/60">A (Merah)</button>\
+            <button onclick="setFilterCategory('B')" id="fltB" class="px-2 py-1 rounded-lg text-amber-600 font-bold hover:bg-white/60">B (Kuning)</button>\
+            <button onclick="setFilterCategory('C')" id="fltC" class="px-2 py-1 rounded-lg text-emerald-600 font-bold hover:bg-white/60">C (Hijau)</button>\
+          </div>\
+\
+          <!-- Search Filter -->\
+          <div class="relative">\
+            <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-400 text-xs"></i>\
+            <input type="text" id="searchInput" oninput="renderAllQueues()" placeholder="Cari Nama / IC..." class="pl-7 pr-2.5 py-1 text-xs border border-slate-300 rounded-xl w-32 sm:w-44 focus:outline-none bg-white">\
+          </div>\
+\
+          <button onclick="exportCSVData()" class="px-2.5 py-1 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold flex items-center gap-1.5 transition">\
+            <i class="fa-solid fa-file-csv text-emerald-600"></i> Export\
+          </button>\
+        </div>\
+      </div>\
+\
+      <!-- KUMPULAN A (MERAH) -->\
+      <div id="groupA" class="bg-white rounded-2xl border-2 border-red-200 shadow-sm overflow-hidden tv-card">\
+        <div class="bg-red-600 text-white p-3 px-4 flex items-center justify-between">\
+          <div class="flex items-center space-x-2">\
+            <span class="w-3 h-3 rounded-full bg-white animate-ping"></span>\
+            <h4 class="font-black text-xs sm:text-sm uppercase tracking-wider">Kumpulan A \'97 Merah (Penilaian Serta-Merta Diperlukan)</h4>\
+          </div>\
+          <span id="badgeCountA" class="bg-red-800/80 font-mono font-bold text-xs px-2.5 py-0.5 rounded-lg border border-red-400/40">\
+            0 Pesakit\
+          </span>\
+        </div>\
+        <div id="queueGroupA" class="p-3 space-y-2.5"></div>\
+      </div>\
+\
+      <!-- KUMPULAN B (KUNING) -->\
+      <div id="groupB" class="bg-white rounded-2xl border-2 border-amber-200 shadow-sm overflow-hidden tv-card">\
+        <div class="bg-amber-500 text-white p-3 px-4 flex items-center justify-between">\
+          <div class="flex items-center space-x-2">\
+            <span class="w-3 h-3 rounded-full bg-white"></span>\
+            <h4 class="font-black text-xs sm:text-sm uppercase tracking-wider">Kumpulan B \'97 Kuning (Sasaran Penilaian 30 \'96 60 Minit)</h4>\
+          </div>\
+          <span id="badgeCountB" class="bg-amber-700/80 font-mono font-bold text-xs px-2.5 py-0.5 rounded-lg border border-amber-400/40">\
+            0 Pesakit\
+          </span>\
+        </div>\
+        <div id="queueGroupB" class="p-3 space-y-2.5"></div>\
+      </div>\
+\
+      <!-- KUMPULAN C (HIJAU) -->\
+      <div id="groupC" class="bg-white rounded-2xl border-2 border-emerald-200 shadow-sm overflow-hidden tv-card">\
+        <div class="bg-emerald-600 text-white p-3 px-4 flex items-center justify-between">\
+          <div class="flex items-center space-x-2">\
+            <span class="w-3 h-3 rounded-full bg-white"></span>\
+            <h4 class="font-black text-xs sm:text-sm uppercase tracking-wider">Kumpulan C \'97 Hijau (Sasaran Penilaian 60 \'96 90 Minit)</h4>\
+          </div>\
+          <span id="badgeCountC" class="bg-emerald-800/80 font-mono font-bold text-xs px-2.5 py-0.5 rounded-lg border border-emerald-400/40">\
+            0 Pesakit\
+          </span>\
+        </div>\
+        <div id="queueGroupC" class="p-3 space-y-2.5"></div>\
+      </div>\
+\
+    </div>\
+\
+  </main>\
+\
+  <!-- MODAL PANDUAN DEPLOYMENT (UNTUK SAMBUNG KE TV & TELEFON MO) -->\
+  <div id="deployGuideModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 no-print">\
+    <div class="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto custom-scrollbar">\
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">\
+        <div class="flex items-center space-x-2">\
+          <span class="bg-hospital-100 text-hospital-700 p-2 rounded-xl text-base"><i class="fa-solid fa-network-wired"></i></span>\
+          <div>\
+            <h3 class="font-black text-slate-800 text-base">Panduan Setup TV Monitor PAC & Telefon MO</h3>\
+            <p class="text-xs text-slate-500">Cara menyambungkan paparan di TV, PC Triaj, dan Telefon Pegawai Perubatan.</p>\
+          </div>\
+        </div>\
+        <button onclick="closeDeployGuideModal()" class="text-slate-400 hover:text-slate-600 text-base p-1">\
+          <i class="fa-solid fa-xmark"></i>\
+        </button>\
+      </div>\
+\
+      <div class="space-y-4 text-xs text-slate-700 leading-relaxed">\
+        \
+        <!-- Option 1: Live Cloud Sync -->\
+        <div class="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1.5">\
+          <div class="font-black text-emerald-900 text-sm flex items-center gap-1.5">\
+            <i class="fa-solid fa-cloud"></i> Pilihan 1: Hosting Percuma (Paling Disyorkan untuk PAC)\
+          </div>\
+          <p class="text-emerald-800">\
+            Hanya muat naik fail <code>index.html</code> ini ke mana-mana hosting percuma seperti <strong>GitHub Pages</strong>, <strong>Vercel</strong>, atau <strong>Netlify</strong>:\
+          </p>\
+          <ol class="list-decimal list-inside space-y-1 pl-1 text-emerald-900 font-medium">\
+            <li>Dapatkan URL web (contohnya: <code>https://pac-triage-hosp.web.app</code>).</li>\
+            <li><strong>Di TV Monitor PAC:</strong> Buka link tersebut di pelayar TV/Smart TV, tekan butang <code>Skrin TV PAC</code> di bahagian atas, dan tekan <code>F11</code> untuk skrin penuh.</li>\
+            <li><strong>Di Telefon MO / Pakar:</strong> Cipta QR Code untuk pautan tersebut dan tampal di dinding PAC. MO hanya perlu imbas untuk buka paparan telefon dan tekan <em>"Mula Periksa"</em>.</li>\
+          </ol>\
+        </div>\
+\
+        <!-- Option 2: Local Hospital Wi-Fi Deployment -->\
+        <div class="p-3.5 bg-sky-50 rounded-xl border border-sky-200 space-y-1.5">\
+          <div class="font-black text-sky-900 text-sm flex items-center gap-1.5">\
+            <i class="fa-solid fa-wifi"></i> Pilihan 2: Rangkaian Tempatan Hospital (Hospital Wi-Fi / Intranet)\
+          </div>\
+          <p class="text-sky-800">\
+            Jika hospital tidak membenarkan akses awam internet, PC di kaunter triaj boleh bertindak sebagai hos mini (Local Server):\
+          </p>\
+          <ul class="list-disc list-inside space-y-1 pl-1 text-sky-900 font-medium">\
+            <li>Gunakan aplikasi seperti <em>Live Server</em> atau <em>Node http-server</em> pada PC triaj.</li>\
+            <li>Semua TV dan telefon pintar yang bersambung dengan Wi-Fi hospital yang sama boleh membuka alamat IP PC tersebut (cth: <code>http://192.168.1.50:8080</code>).</li>\
+          </ul>\
+        </div>\
+\
+        <!-- Instructions for MO Phone Action -->\
+        <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">\
+          <div class="font-bold text-slate-800 mb-1 flex items-center gap-1">\
+            <i class="fa-solid fa-mobile-screen-button text-hospital-600"></i> Cara MO Kendalikan Pesakit Melalui Telefon:\
+          </div>\
+          <p class="text-slate-600">\
+            1. Tekan <strong>"\uc0\u55358 \u56954  Mula Periksa"</strong> apabila mula memanggil pesakit. Kad pesakit akan bertukar warna biru dengan status <em>Sedang Diperiksa</em> di TV Monitor.<br>\
+            2. Tekan <strong>"\uc0\u9989  Selesai Penilaian"</strong> setelah selesai. Pesakit akan terus dikeluarkan dari giliran aktif TV dan dimasukkan ke Arkib.\
+          </p>\
+        </div>\
+\
+      </div>\
+\
+      <div class="flex justify-end pt-2 border-t border-slate-100">\
+        <button onclick="closeDeployGuideModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs">\
+          Faham & Tutup\
+        </button>\
+      </div>\
+    </div>\
+  </div>\
+\
+  <!-- MODAL ARKIB PESAKIT SELESAI DINILAI -->\
+  <div id="archiveModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 no-print">\
+    <div class="bg-white rounded-2xl max-w-4xl w-full p-5 space-y-4 shadow-2xl border border-slate-100 max-h-[90vh] flex flex-col">\
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">\
+        <div class="flex items-center space-x-2">\
+          <span class="bg-emerald-100 text-emerald-700 p-2 rounded-xl text-base"><i class="fa-solid fa-clipboard-check"></i></span>\
+          <div>\
+            <h3 class="font-black text-slate-800 text-base">Senarai Pesakit Telah Selesai Dinilai MO</h3>\
+            <p class="text-xs text-slate-500">Pesakit yang telah dikeluarkan dari giliran aktif PAC setelah selesai diperiksa.</p>\
+          </div>\
+        </div>\
+        <button onclick="toggleCompletedArchiveModal()" class="text-slate-400 hover:text-slate-600 text-base p-1">\
+          <i class="fa-solid fa-xmark"></i>\
+        </button>\
+      </div>\
+\
+      <div class="flex flex-wrap items-center justify-between gap-2 text-xs">\
+        <input type="text" id="archiveSearchInput" oninput="renderArchiveTable()" placeholder="Cari nama, IC atau kod di arkib..." class="px-3 py-1.5 border border-slate-300 rounded-xl text-xs w-64 focus:outline-none focus:ring-2 focus:ring-sky-500">\
+        <span id="archiveTotalLabel" class="text-slate-500 font-semibold">0 pesakit selesai dinilai</span>\
+      </div>\
+\
+      <div class="flex-1 overflow-y-auto custom-scrollbar border border-slate-200 rounded-xl">\
+        <table class="w-full text-left text-xs border-collapse">\
+          <thead class="bg-slate-100 text-slate-700 font-bold sticky top-0 border-b border-slate-200">\
+            <tr>\
+              <th class="p-2.5">Nama & IC</th>\
+              <th class="p-2.5">GA</th>\
+              <th class="p-2.5">Kod Triaj</th>\
+              <th class="p-2.5">Waktu Tiba</th>\
+              <th class="p-2.5">Waktu Dinilai</th>\
+              <th class="p-2.5">Tempoh Menunggu</th>\
+              <th class="p-2.5">Status Sasaran Masa</th>\
+              <th class="p-2.5 text-center">Tindakan</th>\
+            </tr>\
+          </thead>\
+          <tbody id="archiveTableBody" class="divide-y divide-slate-100"></tbody>\
+        </table>\
+      </div>\
+\
+      <div class="flex justify-between items-center pt-2 border-t border-slate-100 text-xs">\
+        <button onclick="restoreLastAssessed()" class="text-sky-700 hover:text-sky-800 font-bold flex items-center gap-1">\
+          <i class="fa-solid fa-arrow-rotate-left"></i> Masukkan Semula Pesakit Terakhir Ke Giliran (Undo)\
+        </button>\
+        <button onclick="toggleCompletedArchiveModal()" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl shadow-xs">\
+          Tutup\
+        </button>\
+      </div>\
+    </div>\
+  </div>\
+\
+  <!-- SLIP CETAKAN MODAL -->\
+  <div id="printSlipModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 no-print">\
+    <div class="bg-white rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto custom-scrollbar">\
+      <div id="slipPrintArea" class="space-y-3 p-1">\
+        <div class="border-b-2 border-slate-900 pb-2.5 flex justify-between items-start">\
+          <div>\
+            <h2 class="text-base font-black tracking-tight text-slate-900 uppercase">SLIP TRIAJ PAC O&G</h2>\
+            <p class="text-[11px] text-slate-500 font-medium">Hospital Patient Admission Centre</p>\
+          </div>\
+          <div id="slipGroupBadge" class="px-2.5 py-1 rounded-full text-xs font-black uppercase text-white shadow-xs"></div>\
+        </div>\
+\
+        <div class="grid grid-cols-2 gap-2 text-xs">\
+          <div><strong>Nama:</strong> <span id="slipName">--</span></div>\
+          <div><strong>No. IC:</strong> <span id="slipIC">--</span></div>\
+          <div><strong>Umur:</strong> <span id="slipAge">--</span></div>\
+          <div><strong>GA / Kandungan:</strong> <span id="slipGA" class="font-bold text-hospital-800">--</span></div>\
+          <div><strong>Masa Tiba:</strong> <span id="slipArrival">--</span></div>\
+          <div><strong>Status:</strong> <span id="slipAssessedStatus">--</span></div>\
+          <div class="col-span-2"><strong>Aduan:</strong> <span id="slipComplaints" class="italic">--</span></div>\
+        </div>\
+\
+        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">\
+          <div class="font-bold text-slate-700 text-[11px] mb-1">Indikasi Triaj:</div>\
+          <div id="slipTriggers" class="text-slate-800"></div>\
+        </div>\
+      </div>\
+\
+      <div class="flex justify-between items-center border-t border-slate-100 pt-3 no-print">\
+        <button onclick="closeSlipModal()" class="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Tutup</button>\
+        <button onclick="window.print()" class="px-4 py-1.5 text-xs font-bold bg-slate-900 hover:bg-black text-white rounded-xl shadow-xs flex items-center gap-1.5">\
+          <i class="fa-solid fa-print"></i> Cetak Slip\
+        </button>\
+      </div>\
+    </div>\
+  </div>\
+\
+  <script>\
+    let patientList = [];\
+    let assessedArchive = [];\
+    let activeCalculatedGroup = 'NONE';\
+    let activeTriggeredReasons = [];\
+    let currentFilterCategory = 'ALL';\
+    let currentViewMode = 'PC'; // 'PC', 'TV', 'MOBILE'\
+    let audioAlarmEnabled = false;\
+    let audioContext = null;\
+    let lastAudioBeepTime = 0;\
+\
+    const SLA_LIMITS = \{\
+      'A': \{ targetMin: 0, criticalMin: 0, name: 'Serta-merta (0m)' \},\
+      'B': \{ targetMin: 30, criticalMin: 60, name: '30 - 60 Minit' \},\
+      'C': \{ targetMin: 60, criticalMin: 90, name: '60 - 90 Minit' \}\
+    \};\
+\
+    const GROUP_INFO = \{\
+      'A': \{\
+        name: 'KUMPULAN A (MERAH)',\
+        badgeClass: 'bg-red-600 text-white border-red-700',\
+        directive: 'Penilaian Serta-merta (0 minit) oleh MO / Pakar.'\
+      \},\
+      'B': \{\
+        name: 'KUMPULAN B (KUNING)',\
+        badgeClass: 'bg-amber-500 text-white border-amber-600',\
+        directive: 'Penilaian MO dalam masa 30 hingga 60 minit.'\
+      \},\
+      'C': \{\
+        name: 'KUMPULAN C (HIJAU)',\
+        badgeClass: 'bg-emerald-600 text-white border-emerald-700',\
+        directive: 'Penilaian pesakit dalam masa 60 hingga 90 minit.'\
+      \},\
+      'NONE': \{\
+        name: 'BELUM DITRIAJ',\
+        badgeClass: 'bg-slate-200 text-slate-600 border-slate-300',\
+        directive: 'Pilih simptom pesakit untuk penentuan kumpulan risiko.'\
+      \}\
+    \};\
+\
+    document.addEventListener("DOMContentLoaded", () => \{\
+      startClock();\
+      setDefaultArrivalTime();\
+      loadInitialSamplePatients();\
+      runAutoTriageClassification();\
+      setInterval(checkWaitingTimers, 1000);\
+    \});\
+\
+    // Cloud synchronization receiver callback\
+    window.handleCloudSyncUpdate = function(loadedList, loadedArchive) \{\
+      patientList = loadedList;\
+      assessedArchive = loadedArchive;\
+      renderAllQueues();\
+      checkWaitingTimers();\
+      updateDashboardStats();\
+      renderArchiveTable();\
+    \};\
+\
+    window.syncStatusUpdate = function(isOnline, text) \{\
+      const badge = document.getElementById('cloudStatusBadge');\
+      const label = document.getElementById('cloudStatusText');\
+      if (badge && label) \{\
+        label.textContent = text;\
+        if (isOnline) \{\
+          badge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1";\
+        \} else \{\
+          badge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30 flex items-center gap-1";\
+        \}\
+      \}\
+    \};\
+\
+    function startClock() \{\
+      const clockEl = document.getElementById('liveClock');\
+      setInterval(() => \{\
+        const now = new Date();\
+        clockEl.textContent = now.toLocaleDateString('en-GB') + ' ' + now.toLocaleTimeString('en-GB');\
+      \}, 1000);\
+    \}\
+\
+    function setDefaultArrivalTime() \{\
+      const now = new Date();\
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());\
+      document.getElementById('ptArrivalTime').value = now.toISOString().slice(0, 16);\
+    \}\
+\
+    function setQuickGA(text) \{\
+      document.getElementById('ptGA').value = text;\
+      if (text.includes('< 34w')) \{\
+        const cb = document.querySelector('input[name="symptomCheck"][value="Preterm labour < 34 weeks"]');\
+        if (cb) cb.checked = true;\
+        runAutoTriageClassification();\
+      \}\
+    \}\
+\
+    function filterSymptoms() \{\
+      const q = (document.getElementById('symptomSearchInput')?.value || '').toLowerCase().trim();\
+      const items = document.querySelectorAll('.symptom-item');\
+      items.forEach(item => \{\
+        const text = item.textContent.toLowerCase();\
+        item.style.display = (!q || text.includes(q)) ? 'flex' : 'none';\
+      \});\
+    \}\
+\
+    function runAutoTriageClassification() \{\
+      const checkedBoxes = Array.from(document.querySelectorAll('input[name="symptomCheck"]:checked'));\
+      const reasonsA = [];\
+      const reasonsB = [];\
+      const reasonsC = [];\
+\
+      checkedBoxes.forEach(box => \{\
+        const grp = box.getAttribute('data-group');\
+        const val = box.value;\
+        if (grp === 'A') reasonsA.push(val);\
+        else if (grp === 'B') reasonsB.push(val);\
+        else if (grp === 'C') reasonsC.push(val);\
+      \});\
+\
+      let calculatedGroup = 'NONE';\
+      let triggers = [];\
+\
+      if (reasonsA.length > 0) \{\
+        calculatedGroup = 'A';\
+        triggers = reasonsA;\
+      \} else if (reasonsB.length > 0) \{\
+        calculatedGroup = 'B';\
+        triggers = reasonsB;\
+      \} else if (reasonsC.length > 0) \{\
+        calculatedGroup = 'C';\
+        triggers = reasonsC;\
+      \}\
+\
+      activeCalculatedGroup = calculatedGroup;\
+      activeTriggeredReasons = triggers;\
+\
+      const badge = document.getElementById('decisionBadge');\
+      const title = document.getElementById('decisionTitle');\
+      const sla = document.getElementById('decisionSLA');\
+      const bar = document.getElementById('triageActionBar');\
+\
+      if (calculatedGroup === 'A') \{\
+        badge.textContent = '\uc0\u55357 \u57000  KOD MERAH (A)';\
+        badge.className = 'text-xs sm:text-sm font-black px-3.5 py-1.5 rounded-full uppercase border shadow-md bg-red-600 text-white border-red-700 animate-pulse';\
+        title.innerHTML = `<span class="text-red-700 font-black">KOD MERAH: PENILAIAN SERTA-MERTA (0 MINIT)</span>`;\
+        sla.textContent = `Punca: $\{triggers.join(' \'95 ')\} \'97 Masukkan ke Resuscitation Bay / Bilik Bersalin segera!`;\
+        bar.className = 'p-3.5 rounded-xl border-2 flex flex-col sm:flex-row items-center justify-between gap-3 bg-red-50 border-red-300 shadow-sm';\
+      \} else if (calculatedGroup === 'B') \{\
+        badge.textContent = '\uc0\u55357 \u57313  KOD KUNING (B)';\
+        badge.className = 'text-xs sm:text-sm font-black px-3.5 py-1.5 rounded-full uppercase border shadow-md bg-amber-500 text-white border-amber-600';\
+        title.innerHTML = `<span class="text-amber-800 font-black">KOD KUNING: PENILAIAN DALAM 30 \'96 60 MINIT</span>`;\
+        sla.textContent = `Punca: $\{triggers.join(' \'95 ')\} \'97 Sediakan CTG / Pemantauan di Bilik Pemeriksaan PAC.`;\
+        bar.className = 'p-3.5 rounded-xl border-2 flex flex-col sm:flex-row items-center justify-between gap-3 bg-amber-50 border-amber-300 shadow-sm';\
+      \} else if (calculatedGroup === 'C') \{\
+        badge.textContent = '\uc0\u55357 \u57314  KOD HIJAU (C)';\
+        badge.className = 'text-xs sm:text-sm font-black px-3.5 py-1.5 rounded-full uppercase border shadow-md bg-emerald-600 text-white border-emerald-700';\
+        title.innerHTML = `<span class="text-emerald-800 font-black">KOD HIJAU: PENILAIAN DALAM 60 \'96 90 MINIT</span>`;\
+        sla.textContent = `Punca: $\{triggers.join(' \'95 ')\} \'97 Urusan kemasukan elektif / prosedur rutin.`;\
+        bar.className = 'p-3.5 rounded-xl border-2 flex flex-col sm:flex-row items-center justify-between gap-3 bg-emerald-50 border-emerald-300 shadow-sm';\
+      \} else \{\
+        badge.textContent = 'BELUM DITRIAJ';\
+        badge.className = 'text-xs sm:text-sm font-black px-3 py-1.5 rounded-full uppercase bg-slate-200 text-slate-600 border border-slate-300';\
+        title.textContent = 'SILA TANDAKAN MASALAH / ADUAN PESAKIT';\
+        sla.textContent = 'Pilih sekurang-kurangnya satu masalah pesakit di atas untuk klasifikasi automatik.';\
+        bar.className = 'p-3.5 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 border-slate-200';\
+      \}\
+    \}\
+\
+    async function handleFastTriageSubmit(e) \{\
+      e.preventDefault();\
+\
+      if (activeCalculatedGroup === 'NONE') \{\
+        showAlert('Sila Pilih Kriteria Triaj', 'Sila tandakan sekurang-kurangnya satu sebab rujukan / indikasi pesakit.', 'error');\
+        return;\
+      \}\
+\
+      const newPt = \{\
+        id: 'PT-' + Date.now(),\
+        name: document.getElementById('ptName').value.trim(),\
+        ic: document.getElementById('ptIC').value.trim(),\
+        age: document.getElementById('ptAge').value,\
+        ga: document.getElementById('ptGA').value.trim(),\
+        arrivalTime: document.getElementById('ptArrivalTime').value,\
+        complaints: document.getElementById('ptComplaints').value.trim(),\
+        group: activeCalculatedGroup,\
+        triggers: [...activeTriggeredReasons],\
+        status: 'MENUNGGU', // 'MENUNGGU' or 'SEDANG_DIPERIKSA'\
+        doctorName: '',\
+        startedConsultAt: null,\
+        isAssessed: false,\
+        assessedAt: null,\
+        totalWaitMinutes: null\
+      \};\
+\
+      // Push to Cloud or Local Array\
+      patientList.push(newPt);\
+      if (window.cloudSavePatient) \{\
+        await window.cloudSavePatient(newPt);\
+      \}\
+\
+      renderAllQueues();\
+      checkWaitingTimers();\
+      updateDashboardStats();\
+      showAlert('Pesakit Berjaya Didaftarkan', `$\{newPt.name\} diselaraskan ke TV PAC & Telefon MO.`, 'success');\
+      resetForm();\
+    \}\
+\
+    // Doctor Actions from Phone or PC\
+    async function startConsultation(id) \{\
+      const pt = patientList.find(p => p.id === id);\
+      if (!pt) return;\
+\
+      const now = new Date();\
+      pt.status = 'SEDANG_DIPERIKSA';\
+      pt.startedConsultAt = now.toISOString();\
+\
+      if (window.cloudUpdatePatient) \{\
+        await window.cloudUpdatePatient(id, \{\
+          status: 'SEDANG_DIPERIKSA',\
+          startedConsultAt: pt.startedConsultAt\
+        \});\
+      \}\
+\
+      showAlert('Pemeriksaan Dimulakan', `MO sedang memeriksa $\{pt.name\}. Status dikemaskini di TV Monitor.`, 'info');\
+      renderAllQueues();\
+      updateDashboardStats();\
+    \}\
+\
+    async function markPatientAssessed(id) \{\
+      const index = patientList.findIndex(p => p.id === id);\
+      if (index === -1) return;\
+\
+      const pt = patientList[index];\
+      const now = new Date();\
+      const arrivalMs = new Date(pt.arrivalTime).getTime();\
+      const waitMins = Math.max(0, Math.floor((now.getTime() - arrivalMs) / 60000));\
+\
+      pt.isAssessed = true;\
+      pt.assessedAt = now.toISOString();\
+      pt.totalWaitMinutes = waitMins;\
+      pt.status = 'SELESAI';\
+\
+      const limits = SLA_LIMITS[pt.group];\
+      pt.slaBreached = (pt.group === 'A' && waitMins > 0) || (waitMins > limits.criticalMin);\
+\
+      // Remove from active list and move to archive\
+      patientList.splice(index, 1);\
+      assessedArchive.unshift(pt);\
+\
+      if (window.cloudUpdatePatient) \{\
+        await window.cloudUpdatePatient(id, \{\
+          isAssessed: true,\
+          assessedAt: pt.assessedAt,\
+          totalWaitMinutes: pt.totalWaitMinutes,\
+          status: 'SELESAI',\
+          slaBreached: pt.slaBreached\
+        \});\
+      \}\
+\
+      showAlert('Penilaian Selesai', `$\{pt.name\} selesai diperiksa dan dikeluarkan dari giliran aktif PAC.`, 'success');\
+      renderAllQueues();\
+      checkWaitingTimers();\
+      updateDashboardStats();\
+      renderArchiveTable();\
+    \}\
+\
+    async function restorePatientToQueue(id) \{\
+      const index = assessedArchive.findIndex(p => p.id === id);\
+      if (index !== -1) \{\
+        const pt = assessedArchive.splice(index, 1)[0];\
+        pt.isAssessed = false;\
+        pt.assessedAt = null;\
+        pt.totalWaitMinutes = null;\
+        pt.status = 'MENUNGGU';\
+\
+        patientList.push(pt);\
+        if (window.cloudUpdatePatient) \{\
+          await window.cloudUpdatePatient(id, \{\
+            isAssessed: false,\
+            assessedAt: null,\
+            totalWaitMinutes: null,\
+            status: 'MENUNGGU'\
+          \});\
+        \}\
+\
+        renderAllQueues();\
+        checkWaitingTimers();\
+        updateDashboardStats();\
+        renderArchiveTable();\
+        showAlert('Pesakit Dikembalikan', `$\{pt.name\} dimasukkan semula ke dalam giliran.`, 'info');\
+      \}\
+    \}\
+\
+    function restoreLastAssessed() \{\
+      if (assessedArchive.length === 0) return;\
+      restorePatientToQueue(assessedArchive[0].id);\
+    \}\
+\
+    function checkWaitingTimers() \{\
+      const now = new Date().getTime();\
+      let totalOverdue = 0;\
+      let overdueA = 0;\
+      let overdueB = 0;\
+      let overdueC = 0;\
+\
+      patientList.forEach(pt => \{\
+        if (!pt.isAssessed && pt.status !== 'SEDANG_DIPERIKSA') \{\
+          const arrivalMs = new Date(pt.arrivalTime).getTime();\
+          const elapsedMins = Math.floor((now - arrivalMs) / 60000);\
+          const limit = SLA_LIMITS[pt.group];\
+\
+          if (pt.group === 'A' && elapsedMins >= 0) \{\
+            overdueA++;\
+            totalOverdue++;\
+          \} else if (pt.group === 'B' && elapsedMins >= limit.criticalMin) \{\
+            overdueB++;\
+            totalOverdue++;\
+          \} else if (pt.group === 'C' && elapsedMins >= limit.criticalMin) \{\
+            overdueC++;\
+            totalOverdue++;\
+          \}\
+        \}\
+      \});\
+\
+      const banner = document.getElementById('slaBreachBanner');\
+      const title = document.getElementById('slaBreachTitle');\
+      const text = document.getElementById('slaBreachText');\
+\
+      if (totalOverdue > 0) \{\
+        banner.classList.remove('hidden');\
+        title.textContent = `\uc0\u55357 \u57000  AMARAN: $\{totalOverdue\} PESAKIT BELUM DINILAI MELEBIHI HAD SASARAN MASA MENUNGGU!`;\
+        \
+        let details = [];\
+        if (overdueA > 0) details.push(`$\{overdueA\} Merah (SERTA-MERTA)`);\
+        if (overdueB > 0) details.push(`$\{overdueB\} Kuning (> 60m)`);\
+        if (overdueC > 0) details.push(`$\{overdueC\} Hijau (> 90m)`);\
+\
+        text.textContent = `Tindakan segera diperlukan untuk: $\{details.join(' \'95 ')\}`;\
+\
+        if (audioAlarmEnabled && (now - lastAudioBeepTime > 6000)) \{\
+          playAlertBeep(850, 0.3);\
+          lastAudioBeepTime = now;\
+        \}\
+      \} else \{\
+        banner.classList.add('hidden');\
+      \}\
+\
+      renderAllQueues();\
+      updateDashboardStats();\
+    \}\
+\
+    function renderAllQueues() \{\
+      const search = (document.getElementById('searchInput')?.value || '').toLowerCase();\
+\
+      let filtered = patientList.filter(p => \{\
+        return p.name.toLowerCase().includes(search) || \
+               p.ic.toLowerCase().includes(search) || \
+               p.ga.toLowerCase().includes(search);\
+      \});\
+\
+      // Quick Category Filter for Phone Mode\
+      if (currentFilterCategory !== 'ALL') \{\
+        filtered = filtered.filter(p => p.group === currentFilterCategory);\
+      \}\
+\
+      // Group visibility toggling\
+      document.getElementById('groupA').style.display = (currentFilterCategory === 'ALL' || currentFilterCategory === 'A') ? 'block' : 'none';\
+      document.getElementById('groupB').style.display = (currentFilterCategory === 'ALL' || currentFilterCategory === 'B') ? 'block' : 'none';\
+      document.getElementById('groupC').style.display = (currentFilterCategory === 'ALL' || currentFilterCategory === 'C') ? 'block' : 'none';\
+\
+      filtered.sort((a, b) => new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime());\
+\
+      const groupA = filtered.filter(p => p.group === 'A');\
+      const groupB = filtered.filter(p => p.group === 'B');\
+      const groupC = filtered.filter(p => p.group === 'C');\
+\
+      renderQueueBox('queueGroupA', groupA, 'A');\
+      renderQueueBox('queueGroupB', groupB, 'B');\
+      renderQueueBox('queueGroupC', groupC, 'C');\
+\
+      document.getElementById('badgeCountA').textContent = `$\{groupA.length\} Pesakit`;\
+      document.getElementById('badgeCountB').textContent = `$\{groupB.length\} Pesakit`;\
+      document.getElementById('badgeCountC').textContent = `$\{groupC.length\} Pesakit`;\
+    \}\
+\
+    function renderQueueBox(containerId, list, groupKey) \{\
+      const container = document.getElementById(containerId);\
+      container.innerHTML = '';\
+\
+      if (list.length === 0) \{\
+        container.innerHTML = `\
+          <div class="text-center py-4 text-slate-400 italic text-xs border border-dashed border-slate-200 rounded-xl">\
+            Tiada pesakit aktif dalam Kumpulan $\{groupKey\}.\
+          </div>`;\
+        return;\
+      \}\
+\
+      const now = new Date().getTime();\
+\
+      list.forEach((pt, index) => \{\
+        const limits = SLA_LIMITS[pt.group];\
+        const arrivalMs = new Date(pt.arrivalTime).getTime();\
+        const elapsedSecs = Math.max(0, Math.floor((now - arrivalMs) / 1000));\
+        const elapsedMins = Math.floor(elapsedSecs / 60);\
+\
+        let badgeHTML = '';\
+        let timerColor = 'text-slate-700 bg-slate-100 border-slate-200';\
+        const isConsulting = pt.status === 'SEDANG_DIPERIKSA';\
+\
+        if (isConsulting) \{\
+          badgeHTML = `<span class="bg-blue-600 text-white font-extrabold text-[10px] px-2.5 py-0.5 rounded-lg flex items-center gap-1 border border-blue-700 animate-pulse"><i class="fa-solid fa-user-doctor"></i> SEDANG DIPERIKSA OLEH MO</span>`;\
+          timerColor = 'text-blue-900 bg-blue-100 border-blue-300 font-bold';\
+        \} else if (pt.group === 'A') \{\
+          badgeHTML = `<span class="bg-red-600 text-white font-extrabold text-[10px] px-2.5 py-0.5 rounded-lg animate-pulse flex items-center gap-1 border border-red-700"><i class="fa-solid fa-bell"></i> PERLU DINILAI SEGERA</span>`;\
+          timerColor = 'text-red-900 bg-red-100 border-red-300 font-black';\
+        \} else if (elapsedMins >= limits.criticalMin) \{\
+          badgeHTML = `<span class="bg-rose-600 text-white font-extrabold text-[10px] px-2.5 py-0.5 rounded-lg flex items-center gap-1 border border-rose-700 animate-bounce"><i class="fa-solid fa-triangle-exclamation"></i> MELEBIHI HAD (> $\{limits.criticalMin\}m)</span>`;\
+          timerColor = 'text-rose-900 bg-rose-100 border-rose-300 font-black';\
+        \} else if (elapsedMins >= limits.targetMin) \{\
+          badgeHTML = `<span class="bg-amber-500 text-white font-extrabold text-[10px] px-2.5 py-0.5 rounded-lg flex items-center gap-1 border border-amber-600"><i class="fa-solid fa-clock"></i> MENGHAMPIRI HAD ($\{limits.targetMin\}m)</span>`;\
+          timerColor = 'text-amber-900 bg-amber-100 border-amber-300 font-bold';\
+        \} else \{\
+          badgeHTML = `<span class="bg-slate-100 text-slate-700 font-bold text-[10px] px-2 py-0.5 rounded-lg border border-slate-200">DALAM TEMPOH (Had: $\{limits.targetMin\}m)</span>`;\
+          timerColor = 'text-slate-700 bg-slate-100 border-slate-200';\
+        \}\
+\
+        const arrivalTimeStr = new Date(pt.arrivalTime).toLocaleTimeString('en-GB', \{ hour: '2-digit', minute: '2-digit' \});\
+        const timeDisplay = `$\{Math.floor(elapsedMins / 60)\}j $\{elapsedMins % 60\}m $\{elapsedSecs % 60\}s`;\
+\
+        const card = document.createElement('div');\
+        card.id = `ptCard-$\{pt.id\}`;\
+        card.className = `bg-white p-3 rounded-xl border border-slate-200 shadow-xs hover:shadow-md transition text-xs space-y-2.5 $\{(pt.group === 'A' || elapsedMins >= limits.criticalMin) ? 'ring-2 ring-rose-500 ring-offset-1' : ''\} $\{isConsulting ? 'ring-2 ring-blue-500 ring-offset-1 bg-blue-50/20' : ''\}`;\
+\
+        card.innerHTML = `\
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">\
+            <div class="flex flex-wrap items-center gap-2">\
+              <span class="font-mono font-bold text-slate-400 text-xs">#$\{index + 1\}</span>\
+              <h5 class="font-black text-slate-900 text-sm sm:text-base">$\{pt.name\}</h5>\
+              <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">$\{pt.age\} thn</span>\
+              <span class="px-2 py-0.5 rounded bg-sky-50 text-hospital-800 font-bold border border-sky-200">\
+                <i class="fa-solid fa-baby text-hospital-600 mr-1"></i>$\{pt.ga\}\
+              </span>\
+              $\{badgeHTML\}\
+            </div>\
+\
+            <!-- Action Buttons Optimized for Doctors' Phones & PC -->\
+            <div class="flex items-center gap-1.5 w-full sm:w-auto justify-end pt-1 sm:pt-0">\
+              $\{!isConsulting ? `\
+                <button onclick="startConsultation('$\{pt.id\}')" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-xs flex items-center gap-1 transition">\
+                  <i class="fa-solid fa-stethoscope"></i> Mula Periksa\
+                </button>\
+              ` : `\
+                <span class="text-[11px] font-bold text-blue-700 px-2 py-1 rounded bg-blue-100 border border-blue-200 flex items-center gap-1">\
+                  <i class="fa-solid fa-spinner fa-spin"></i> Dalam Rawatan\
+                </span>\
+              `\}\
+\
+              <button onclick="markPatientAssessed('$\{pt.id\}')" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs flex items-center gap-1.5 transition">\
+                <i class="fa-solid fa-circle-check"></i> Selesai\
+              </button>\
+\
+              <button onclick="openSlipModal('$\{pt.id\}')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 text-white hover:bg-black font-semibold text-xs flex items-center gap-1">\
+                <i class="fa-solid fa-print"></i>\
+              </button>\
+            </div>\
+          </div>\
+\
+          <!-- Highlight Waiting Time Bar with Live Ticking Clock -->\
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-wrap items-center justify-between gap-2">\
+            <div class="flex items-center gap-2">\
+              <span class="text-[11px] text-slate-500 font-bold"><i class="fa-regular fa-clock mr-1"></i>Waktu Tiba: <strong class="font-mono text-slate-800">$\{arrivalTimeStr\}</strong></span>\
+              <span class="text-slate-300">\'95</span>\
+              <span class="text-[11px] text-slate-500 font-bold">Sasaran Had: <strong class="text-slate-800">$\{limits.name\}</strong></span>\
+            </div>\
+            <div class="flex items-center gap-1.5">\
+              <span class="text-[10px] font-black uppercase text-slate-500">Masa Menunggu Terkini:</span>\
+              <span class="px-2.5 py-0.5 rounded-md font-mono text-xs font-black border $\{timerColor\}">\
+                <i class="fa-solid fa-stopwatch mr-1"></i>$\{timeDisplay\}\
+              </span>\
+            </div>\
+          </div>\
+\
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600 text-[11px] pt-0.5">\
+            <div>\
+              <p><strong>No. Kad Pengenalan:</strong> <span class="font-mono text-slate-800">$\{pt.ic\}</span></p>\
+              <p class="mt-1"><strong>Aduan Utama:</strong> <span class="text-slate-800 font-medium">$\{pt.complaints\}</span></p>\
+            </div>\
+\
+            <div class="bg-white p-2 rounded-lg border border-slate-200 font-sans text-[11px]">\
+              <div class="text-slate-700 font-bold mb-0.5">Indikasi Klinikal Triaj:</div>\
+              <div class="text-slate-800 font-medium">$\{pt.triggers.join(', ') || 'Rutin PAC'\}</div>\
+            </div>\
+          </div>\
+        `;\
+\
+        container.appendChild(card);\
+      \});\
+    \}\
+\
+    // Switch between PC Kaunter, TV Monitor, and Phone MO View Modes\
+    function setViewMode(mode) \{\
+      currentViewMode = mode;\
+      const body = document.getElementById('mainBody');\
+      const formCard = document.getElementById('triageRegistrationCard');\
+      const btnPC = document.getElementById('viewBtnPC');\
+      const btnTV = document.getElementById('viewBtnTV');\
+      const btnMob = document.getElementById('viewBtnMobile');\
+\
+      // Reset button styles\
+      [btnPC, btnTV, btnMob].forEach(b => \{\
+        b.className = "px-2.5 py-1 rounded-lg font-semibold text-sky-200 hover:text-white flex items-center gap-1.5 transition";\
+      \});\
+\
+      if (mode === 'TV') \{\
+        btnTV.className = "px-2.5 py-1 rounded-lg font-bold bg-white text-hospital-900 shadow-xs flex items-center gap-1.5 transition";\
+        formCard.classList.add('hidden');\
+        showAlert('Mod TV Monitor Diaktifkan', 'Paparan skrin penuh diaktifkan untuk paparan monitor dinding PAC. Tekan F11 pada keyboard untuk Fullscreen.', 'info');\
+      \} else if (mode === 'MOBILE') \{\
+        btnMob.className = "px-2.5 py-1 rounded-lg font-bold bg-white text-hospital-900 shadow-xs flex items-center gap-1.5 transition";\
+        formCard.classList.add('hidden');\
+        showAlert('Mod Telefon MO Diaktifkan', 'Paparan padat dioptimumkan untuk skrin telefon Pegawai Perubatan & Pakar.', 'info');\
+      \} else \{\
+        btnPC.className = "px-2.5 py-1 rounded-lg font-bold bg-white text-hospital-900 shadow-xs flex items-center gap-1.5 transition";\
+        formCard.classList.remove('hidden');\
+      \}\
+      renderAllQueues();\
+    \}\
+\
+    function setFilterCategory(cat) \{\
+      currentFilterCategory = cat;\
+      ['fltAll', 'fltA', 'fltB', 'fltC'].forEach(id => \{\
+        const btn = document.getElementById(id);\
+        if (btn) btn.className = "px-2 py-1 rounded-lg text-slate-600 hover:bg-white/60 font-semibold";\
+      \});\
+      const activeBtn = document.getElementById(`flt$\{cat === 'ALL' ? 'All' : cat\}`);\
+      if (activeBtn) activeBtn.className = "px-2 py-1 rounded-lg bg-white font-bold text-slate-900 shadow-xs";\
+      renderAllQueues();\
+    \}\
+\
+    function updateDashboardStats() \{\
+      const activeTotal = patientList.length;\
+      const assessedTotal = assessedArchive.length;\
+      const grandTotal = activeTotal + assessedTotal;\
+\
+      const activeA = patientList.filter(p => p.group === 'A').length;\
+      const activeB = patientList.filter(p => p.group === 'B').length;\
+      const activeC = patientList.filter(p => p.group === 'C').length;\
+      const inConsult = patientList.filter(p => p.status === 'SEDANG_DIPERIKSA').length;\
+\
+      const now = new Date().getTime();\
+      let activeBreached = 0;\
+\
+      patientList.forEach(pt => \{\
+        if (pt.status !== 'SEDANG_DIPERIKSA') \{\
+          const elapsedMins = Math.floor((now - new Date(pt.arrivalTime).getTime()) / 60000);\
+          const limits = SLA_LIMITS[pt.group];\
+          if (pt.group === 'A' || elapsedMins >= limits.criticalMin) \{\
+            activeBreached++;\
+          \}\
+        \}\
+      \});\
+\
+      const completedBreached = assessedArchive.filter(p => p.slaBreached).length;\
+      const totalBreached = activeBreached + completedBreached;\
+      const complianceRate = grandTotal > 0 ? Math.round(((grandTotal - totalBreached) / grandTotal) * 100) : 100;\
+\
+      document.getElementById('dashTotalRegistered').textContent = grandTotal;\
+      document.getElementById('dashActiveWaiting').textContent = activeTotal;\
+      document.getElementById('dashWaitingBreakdown').textContent = `$\{activeA\}A \'95 $\{activeB\}B \'95 $\{activeC\}C`;\
+      document.getElementById('dashInConsultation').textContent = inConsult;\
+      document.getElementById('dashTotalAssessed').textContent = assessedTotal;\
+      document.getElementById('dashTotalBreached').textContent = activeBreached;\
+      document.getElementById('dashComplianceRate').textContent = `Capai Sasaran: $\{complianceRate\}%`;\
+      document.getElementById('archiveCountBadge').textContent = assessedTotal;\
+    \}\
+\
+    function openDeployGuideModal() \{\
+      document.getElementById('deployGuideModal').classList.remove('hidden');\
+    \}\
+\
+    function closeDeployGuideModal() \{\
+      document.getElementById('deployGuideModal').classList.add('hidden');\
+    \}\
+\
+    function toggleCompletedArchiveModal() \{\
+      const modal = document.getElementById('archiveModal');\
+      if (modal.classList.contains('hidden')) \{\
+        renderArchiveTable();\
+        modal.classList.remove('hidden');\
+      \} else \{\
+        modal.classList.add('hidden');\
+      \}\
+    \}\
+\
+    function renderArchiveTable() \{\
+      const tbody = document.getElementById('archiveTableBody');\
+      const search = (document.getElementById('archiveSearchInput')?.value || '').toLowerCase().trim();\
+      const countLabel = document.getElementById('archiveTotalLabel');\
+\
+      const filtered = assessedArchive.filter(p => \{\
+        return p.name.toLowerCase().includes(search) ||\
+               p.ic.toLowerCase().includes(search) ||\
+               p.group.toLowerCase().includes(search);\
+      \});\
+\
+      countLabel.textContent = `$\{filtered.length\} daripada $\{assessedArchive.length\} pesakit`;\
+      tbody.innerHTML = '';\
+\
+      if (filtered.length === 0) \{\
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-slate-400 italic">Tiada rekod pesakit selesai dijumpai.</td></tr>`;\
+        return;\
+      \}\
+\
+      filtered.forEach(pt => \{\
+        const arrivalStr = new Date(pt.arrivalTime).toLocaleTimeString('en-GB', \{ hour: '2-digit', minute: '2-digit' \});\
+        const assessedStr = new Date(pt.assessedAt).toLocaleTimeString('en-GB', \{ hour: '2-digit', minute: '2-digit' \});\
+        const groupColor = pt.group === 'A' ? 'bg-red-100 text-red-800 border-red-300' :\
+                           pt.group === 'B' ? 'bg-amber-100 text-amber-800 border-amber-300' :\
+                           'bg-emerald-100 text-emerald-800 border-emerald-300';\
+\
+        const slaBadge = pt.slaBreached ?\
+          `<span class="px-2 py-0.5 rounded font-black bg-rose-100 text-rose-700 border border-rose-300">LEWAT (Melebihi Had)</span>` :\
+          `<span class="px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-700 border border-emerald-300">DALAM SASARAN</span>`;\
+\
+        const tr = document.createElement('tr');\
+        tr.className = 'hover:bg-slate-50 transition';\
+        tr.innerHTML = `\
+          <td class="p-2.5">\
+            <div class="font-black text-slate-900">$\{pt.name\}</div>\
+            <div class="text-[11px] text-slate-500 font-mono">$\{pt.ic\} \'95 $\{pt.age\} thn</div>\
+          </td>\
+          <td class="p-2.5 font-bold text-hospital-800">$\{pt.ga\}</td>\
+          <td class="p-2.5"><span class="px-2 py-0.5 rounded font-black border text-[10px] $\{groupColor\}">KUMPULAN $\{pt.group\}</span></td>\
+          <td class="p-2.5 font-mono text-slate-600">$\{arrivalStr\}</td>\
+          <td class="p-2.5 font-mono text-emerald-700 font-bold">$\{assessedStr\}</td>\
+          <td class="p-2.5 font-mono font-bold text-slate-800">$\{pt.totalWaitMinutes\} minit</td>\
+          <td class="p-2.5">$\{slaBadge\}</td>\
+          <td class="p-2.5 text-center">\
+            <button onclick="restorePatientToQueue('$\{pt.id\}')" class="px-2 py-1 rounded bg-sky-50 hover:bg-sky-100 text-hospital-700 border border-sky-200 font-bold text-[10px]">\
+              <i class="fa-solid fa-arrow-rotate-left"></i> Undo\
+            </button>\
+          </td>\
+        `;\
+        tbody.appendChild(tr);\
+      \});\
+    \}\
+\
+    function openSlipModal(id) \{\
+      const pt = patientList.find(p => p.id === id) || assessedArchive.find(p => p.id === id);\
+      if (!pt) return;\
+\
+      document.getElementById('slipName').textContent = pt.name;\
+      document.getElementById('slipIC').textContent = pt.ic;\
+      document.getElementById('slipAge').textContent = `$\{pt.age\} tahun`;\
+      document.getElementById('slipGA').textContent = pt.ga;\
+      document.getElementById('slipArrival').textContent = new Date(pt.arrivalTime).toLocaleString('en-GB');\
+      document.getElementById('slipAssessedStatus').textContent = pt.isAssessed ? `Selesai Dinilai MO ($\{new Date(pt.assessedAt).toLocaleTimeString('en-GB')\})` : (pt.status === 'SEDANG_DIPERIKSA' ? 'Sedang Diperiksa oleh MO' : 'Sedang Menunggu Penilaian MO');\
+      document.getElementById('slipComplaints').textContent = pt.complaints;\
+\
+      const badge = document.getElementById('slipGroupBadge');\
+      badge.textContent = `KUMPULAN $\{pt.group\}`;\
+      badge.className = `px-3 py-1 rounded-full text-xs font-black uppercase text-white $\{GROUP_INFO[pt.group].badgeClass\}`;\
+      document.getElementById('slipTriggers').textContent = pt.triggers.join(', ') || 'Rutin PAC';\
+\
+      document.getElementById('printSlipModal').classList.remove('hidden');\
+    \}\
+\
+    function closeSlipModal() \{\
+      document.getElementById('printSlipModal').classList.add('hidden');\
+    \}\
+\
+    function exportCSVData() \{\
+      const allRecords = [...patientList, ...assessedArchive];\
+      if (allRecords.length === 0) \{\
+        showAlert('Tiada Data', 'Tiada rekod pesakit untuk dieksport.', 'error');\
+        return;\
+      \}\
+\
+      let csv = "Nama,IC,Umur,GA,Waktu_Tiba,Waktu_Dinilai,Status,Minit_Menunggu,Kumpulan,Aduan,Sebab_Triaj\\n";\
+      allRecords.forEach(p => \{\
+        const assessedTime = p.assessedAt ? new Date(p.assessedAt).toLocaleString('en-GB') : "Belum";\
+        const waitMins = p.totalWaitMinutes !== null ? p.totalWaitMinutes : Math.floor((new Date().getTime() - new Date(p.arrivalTime).getTime()) / 60000);\
+        csv += `"$\{p.name\}","$\{p.ic\}","$\{p.age\}","$\{p.ga\}","$\{p.arrivalTime\}","$\{assessedTime\}","$\{p.status\}","$\{waitMins\}","$\{p.group\}","$\{p.complaints.replace(/"/g, '""')\}","$\{p.triggers.join('; ')\}"\\n`;\
+      \});\
+\
+      const blob = new Blob([csv], \{ type: 'text/csv;charset=utf-8;' \});\
+      const url = URL.createObjectURL(blob);\
+      const a = document.createElement('a');\
+      a.href = url;\
+      a.download = `PAC_OG_Triaj_$\{new Date().toISOString().slice(0, 10)\}.csv`;\
+      a.click();\
+    \}\
+\
+    function toggleAudioAlarm() \{\
+      audioAlarmEnabled = !audioAlarmEnabled;\
+      const btn = document.getElementById('audioToggleBtn');\
+      const icon = document.getElementById('audioIcon');\
+      const text = document.getElementById('audioText');\
+\
+      if (audioAlarmEnabled) \{\
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();\
+        btn.className = "flex items-center gap-1.5 bg-rose-700 hover:bg-rose-800 border border-rose-500 text-white px-2.5 py-1.5 rounded-xl transition animate-pulse";\
+        icon.className = "fa-solid fa-volume-high text-white";\
+        text.textContent = "Alarm: ON";\
+        playAlertBeep(880, 0.2);\
+      \} else \{\
+        btn.className = "flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-xl transition";\
+        icon.className = "fa-solid fa-volume-xmark text-slate-400";\
+        text.textContent = "Alarm: OFF";\
+      \}\
+    \}\
+\
+    function playAlertBeep(freq = 750, duration = 0.3) \{\
+      if (!audioAlarmEnabled || !audioContext) return;\
+      try \{\
+        const osc = audioContext.createOscillator();\
+        const gain = audioContext.createGain();\
+        osc.type = 'sine';\
+        osc.frequency.value = freq;\
+        gain.gain.value = 0.15;\
+        osc.connect(gain);\
+        gain.connect(audioContext.destination);\
+        osc.start();\
+        osc.stop(audioContext.currentTime + duration);\
+      \} catch (e) \{\
+        console.warn("Audio issue:", e);\
+      \}\
+    \}\
+\
+    function resetForm() \{\
+      document.getElementById('triageForm').reset();\
+      setDefaultArrivalTime();\
+      document.getElementById('ptGA').value = '';\
+      const searchBox = document.getElementById('symptomSearchInput');\
+      if (searchBox) searchBox.value = '';\
+      filterSymptoms();\
+      runAutoTriageClassification();\
+    \}\
+\
+    function loadQuickDemo(type) \{\
+      resetForm();\
+      if (type === 'eclampsia') \{\
+        document.getElementById('ptName').value = "Aishah Binti Ramli";\
+        document.getElementById('ptIC').value = "960314-08-5112";\
+        document.getElementById('ptAge').value = 30;\
+        document.getElementById('ptGA').value = "34 minggu";\
+        document.getElementById('ptComplaints').value = "Sakit kepala teruk di dahi, penglihatan kabur dan pedih ulu hati.";\
+        const cb = document.querySelector('input[name="symptomCheck"][value="Symptoms of IE (Imminent Eclampsia)"]');\
+        if (cb) cb.checked = true;\
+      \} else if (type === 'pprom') \{\
+        document.getElementById('ptName').value = "Lim Mei Ling";\
+        document.getElementById('ptIC').value = "920815-14-5220";\
+        document.getElementById('ptAge').value = 34;\
+        document.getElementById('ptGA').value = "35+2 minggu";\
+        document.getElementById('ptComplaints').value = "Keluar air jernih dari kemaluan sejak jam 5 pagi.";\
+        const cb = document.querySelector('input[name="symptomCheck"][value="Pecah Air Ketuban (PROM / PPROM)"]');\
+        if (cb) cb.checked = true;\
+      \} else if (type === 'elective') \{\
+        document.getElementById('ptName').value = "Kavitha A/P Muthu";\
+        document.getElementById('ptIC').value = "890520-10-6102";\
+        document.getElementById('ptAge').value = 37;\
+        document.getElementById('ptGA').value = "Term (40 minggu)";\
+        document.getElementById('ptComplaints').value = "Kemasukan elektif IOL.";\
+        const cb = document.querySelector('input[name="symptomCheck"][value="Kemasukan Elektif untuk IOL"]');\
+        if (cb) cb.checked = true;\
+      \}\
+      runAutoTriageClassification();\
+    \}\
+\
+    function showAlert(title, message, type = 'info') \{\
+      const box = document.getElementById('alertBanner');\
+      const icon = document.getElementById('alertIcon');\
+      const titleEl = document.getElementById('alertTitle');\
+      const msgEl = document.getElementById('alertMessage');\
+\
+      titleEl.textContent = title;\
+      msgEl.textContent = message;\
+      box.className = "rounded-xl p-3 flex items-start space-x-3 shadow-xs border transition-all no-print ";\
+\
+      if (type === 'success') \{\
+        box.classList.add('bg-emerald-50', 'text-emerald-900', 'border-emerald-200');\
+        icon.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-600"></i>';\
+      \} else if (type === 'error') \{\
+        box.classList.add('bg-rose-50', 'text-rose-900', 'border-rose-200');\
+        icon.innerHTML = '<i class="fa-solid fa-circle-xmark text-rose-600"></i>';\
+      \} else \{\
+        box.classList.add('bg-sky-50', 'text-sky-900', 'border-sky-200');\
+        icon.innerHTML = '<i class="fa-solid fa-circle-info text-sky-600"></i>';\
+      \}\
+\
+      box.classList.remove('hidden');\
+      setTimeout(() => box.classList.add('hidden'), 5000);\
+    \}\
+\
+    function hideAlert() \{\
+      document.getElementById('alertBanner').classList.add('hidden');\
+    \}\
+\
+    function scrollToOverdue() \{\
+      const overdue = patientList.find(p => !p.isAssessed && (p.group === 'A' || Math.floor((new Date().getTime() - new Date(p.arrivalTime).getTime()) / 60000) >= SLA_LIMITS[p.group].criticalMin));\
+      if (overdue) \{\
+        const el = document.getElementById(`ptCard-$\{overdue.id\}`);\
+        if (el) el.scrollIntoView(\{ behavior: 'smooth', block: 'center' \});\
+      \}\
+    \}\
+\
+    function loadInitialSamplePatients() \{\
+      const now = new Date();\
+      const timeA = new Date(now.getTime() - 10 * 60000).toISOString().slice(0, 16);\
+      const timeB = new Date(now.getTime() - 40 * 60000).toISOString().slice(0, 16);\
+      const timeC = new Date(now.getTime() - 25 * 60000).toISOString().slice(0, 16);\
+\
+      patientList = [\
+        \{\
+          id: 'PT-101',\
+          name: 'Nurin Jasmine',\
+          ic: '970821-10-5224',\
+          age: 29,\
+          ga: '33+5 minggu',\
+          arrivalTime: timeA,\
+          complaints: 'Tumpah darah dari kemaluan berserta sakit perut kuat.',\
+          group: 'A',\
+          triggers: ['BP \uc0\u8805  160/100 mmHg', 'Antepartum Haemorrhage (APH)'],\
+          status: 'MENUNGGU',\
+          isAssessed: false,\
+          assessedAt: null,\
+          totalWaitMinutes: null\
+        \},\
+        \{\
+          id: 'PT-102',\
+          name: 'Siti Zulaikha',\
+          ic: '940312-08-6110',\
+          age: 32,\
+          ga: '36 minggu',\
+          arrivalTime: timeB,\
+          complaints: 'Dirujuk KKIA untuk pemeriksaan pergerakan bayi berkurang.',\
+          group: 'B',\
+          triggers: ['Pergerakan Bayi Berkurang (Reduced FM)'],\
+          status: 'SEDANG_DIPERIKSA',\
+          isAssessed: false,\
+          assessedAt: null,\
+          totalWaitMinutes: null\
+        \},\
+        \{\
+          id: 'PT-103',\
+          name: 'Tan Poh Poh',\
+          ic: '890505-14-5562',\
+          age: 37,\
+          ga: 'Term (39w)',\
+          arrivalTime: timeC,\
+          complaints: 'Kemasukan elektif repeat LSCS.',\
+          group: 'C',\
+          triggers: ['Pembedahan Elektif (LSCS / Gynae)'],\
+          status: 'MENUNGGU',\
+          isAssessed: false,\
+          assessedAt: null,\
+          totalWaitMinutes: null\
+        \}\
+      ];\
+\
+      renderAllQueues();\
+      checkWaitingTimers();\
+      updateDashboardStats();\
+    \}\
+  </script>\
+</body>\
+</html>}
